@@ -7,5 +7,6 @@ server:
 
 app:
   external:
-    apiBaseUrl: https://www.ddfdb.de
+    ddfdbBaseUrl: https://www.ddfdb.de
+    dieDreiMetadatenUrl: https://dreimetadaten.de/data/
     secret: ${DDFDB_API_KEY:secret}
