@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: drei-alben-proxy
+
+app:
+  external:
+    apiBaseUrl: https://www.ddfdb.de
+    secret: ${DDFDB_API_KEY:secret}
