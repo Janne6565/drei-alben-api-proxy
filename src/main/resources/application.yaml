@@ -1,6 +1,9 @@
 spring:
   application:
     name: drei-alben-proxy
+server:
+  servlet:
+    context-path: /api
 
 app:
   external:
