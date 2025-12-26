@@ -13,7 +13,7 @@ public class SecurityConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
             .allowedOrigins(List.of(
-                "http://localhost:8081").toArray(String[]::new))
+                "http://localhost:8081", "https://drei-alben--gct9arzsin.expo.app").toArray(String[]::new))
             .allowedMethods("GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS")
             .allowedHeaders("*")
             .allowCredentials(true);
