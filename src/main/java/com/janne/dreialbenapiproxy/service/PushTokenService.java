@@ -19,7 +19,7 @@ public class PushTokenService {
     @Transactional
     public PushTokenResponse registerToken(PushTokenRequest request) {
         log.info("Registering push token: {}", maskToken(request.token()));
-        
+
         PushToken pushToken = pushTokenRepository.findByToken(request.token())
             .map(existing -> {
                 log.info("Token already exists, updating: {}", maskToken(request.token()));
@@ -50,10 +50,10 @@ public class PushTokenService {
     @Transactional
     public PushTokenResponse updateTokenEnabled(String token, boolean enabled) {
         log.info("Updating token enabled status: {} to {}", maskToken(token), enabled);
-        
+
         PushToken pushToken = pushTokenRepository.findByToken(token)
-            .orElseThrow(() -> new IllegalArgumentException("Push token not found: " + token));
-        
+            .orElse(PushToken.builder().token(token).build());
+
         pushToken.setEnabled(enabled);
         PushToken saved = pushTokenRepository.save(pushToken);
         return toResponse(saved);
