@@ -52,7 +52,13 @@ public class PushTokenService {
         log.info("Updating token enabled status: {} to {}", maskToken(token), enabled);
 
         PushToken pushToken = pushTokenRepository.findByToken(token)
-            .orElse(PushToken.builder().token(token).build());
+            .orElseGet(() -> {
+                log.warn("Token not found during update, creating new token: {}", maskToken(token));
+                return PushToken.builder()
+                    .token(token)
+                    .enabled(enabled)
+                    .build();
+            });
 
         pushToken.setEnabled(enabled);
         PushToken saved = pushTokenRepository.save(pushToken);
