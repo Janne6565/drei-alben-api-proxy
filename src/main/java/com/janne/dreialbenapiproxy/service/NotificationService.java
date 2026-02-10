@@ -101,4 +101,66 @@ public class NotificationService {
             )
         );
     }
+
+    public int sendTestNotification(String title, String body, boolean onlyEnabled) {
+        List<PushToken> tokens = onlyEnabled 
+            ? pushTokenRepository.findByEnabledTrue()
+            : pushTokenRepository.findAll();
+
+        if (tokens.isEmpty()) {
+            log.debug("No push tokens found for test notification");
+            return 0;
+        }
+
+        log.info("Sending test notification to {} devices (onlyEnabled: {})", tokens.size(), onlyEnabled);
+
+        Flux.fromIterable(tokens)
+            .buffer(BATCH_SIZE)
+            .flatMap(tokenBatch -> sendTestBatchNotification(tokenBatch, title, body))
+            .doOnError(error -> log.error("Error sending test notifications", error))
+            .blockLast(); // Block to ensure completion for admin endpoint
+
+        return tokens.size();
+    }
+
+    private Mono<Void> sendTestBatchNotification(List<PushToken> tokens, String title, String body) {
+        WebClient webClient = webClientBuilder
+            .baseUrl(EXPO_PUSH_URL)
+            .build();
+
+        List<Map<String, Object>> messages = tokens.stream()
+            .map(token -> buildTestPushMessage(token.getToken(), title, body))
+            .toList();
+
+        return webClient.post()
+            .bodyValue(messages)
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response -> {
+                log.error("Failed to send test notifications. Status: {}", response.statusCode());
+                return response.bodyToMono(String.class)
+                    .doOnNext(errorBody -> log.error("Error body: {}", errorBody))
+                    .then(Mono.empty());
+            })
+            .bodyToMono(String.class)
+            .doOnNext(response -> log.debug("Expo push response: {}", response))
+            .doOnError(error -> log.error("Error sending test batch notification", error))
+            .then()
+            .onErrorResume(error -> {
+                log.error("Failed to send test notification batch, continuing...", error);
+                return Mono.empty();
+            });
+    }
+
+    private Map<String, Object> buildTestPushMessage(String token, String title, String body) {
+        return Map.of(
+            "to", token,
+            "sound", "default",
+            "title", title,
+            "body", body,
+            "data", Map.of(
+                "type", "TEST_NOTIFICATION",
+                "timestamp", System.currentTimeMillis()
+            )
+        );
+    }
 }
