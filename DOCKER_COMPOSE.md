@@ -33,13 +33,34 @@ docker-compose down -v
 After starting PostgreSQL:
 
 ```bash
+# Optional: Set environment variables
+export DDFDB_API_KEY=your_api_key_here
+export ADMIN_TOKEN=your_secure_admin_token
+
 ./mvnw spring-boot:run
 ```
 
 The application will automatically:
 - Connect to the local PostgreSQL instance
-- Run Flyway migrations to create tables
+- Run database migrations to create tables
 - Start on port 8080
+
+### Test Admin Endpoint
+
+Send a test push notification (requires registered devices):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/admin/notifications \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Token: your_secure_admin_token" \
+  -d '{
+    "title": "Test Notification",
+    "body": "This is a test from local development",
+    "onlyEnabled": true
+  }'
+```
+
+**Note**: The default admin token is `change-me-in-production` if not set via environment variable.
 
 ### Access PostgreSQL Directly
 
