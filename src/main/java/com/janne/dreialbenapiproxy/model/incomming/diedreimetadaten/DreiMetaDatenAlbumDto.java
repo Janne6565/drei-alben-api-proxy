@@ -20,11 +20,14 @@ public record DreiMetaDatenAlbumDto(int nummer,
                                     LocalDate veroeffentlichungsdatum,
 
                                     @JsonProperty("gesamtdauer")
-                                    long gesamtdauer,
+                                    Long gesamtdauer,
 
                                     List<Kapitel> kapitel,
                                     List<Sprechrolle> sprechrollen,
                                     Links links,
                                     Ids ids,
-                                    List<Medium> medien) {
+                                    List<Medium> medien,
+
+                                    @JsonProperty("unvollständig")
+                                    Boolean unvollstaendig) {
 }

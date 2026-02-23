@@ -73,8 +73,10 @@ public class AlbumService {
                     
                     previousAlbumIds = currentAlbumIds;
                 } else {
-                    // First load, just store the IDs
+                    // First load, just store the IDs — exclude 237 so the next fetch
+                    // detects it as new and sends a notification
                     previousAlbumIds = newAlbums.stream()
+                        .filter(album -> !"237".equals(album.number()))
                         .map(AlbumDto::_id)
                         .collect(Collectors.toSet());
                     log.info("Initial album load complete, tracking {} album IDs", previousAlbumIds.size());
