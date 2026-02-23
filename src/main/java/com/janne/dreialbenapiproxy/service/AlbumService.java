@@ -34,56 +34,54 @@ public class AlbumService {
     @Scheduled(fixedDelay = 5, timeUnit = TimeUnit.MINUTES)
     public void loadAlbums() {
         ddfbdApiService.getAllAlbumsFromDdfdb()
-            .flatMap(albumDto -> {
-                if (albumDto.number() == null || albumDto.number().isBlank()) {
-                    return Mono.just(albumDto);
-                }
+                .flatMap(albumDto -> {
+                    if (albumDto.number() == null || albumDto.number().isBlank()) {
+                        return Mono.just(albumDto);
+                    }
 
-                return dreiMetadatenApiService
-                    .fetchAlbumFromDreiMetadaten(albumDto.number())
-                    .map(meta -> {
-                        AlbumDto.AlbumDtoBuilder builder = albumDto.toBuilder()
-                            .appleMusicId(meta.ids().appleMusic());
+                    return dreiMetadatenApiService
+                            .fetchAlbumFromDreiMetadaten(albumDto.number())
+                            .map(meta -> {
+                                AlbumDto.AlbumDtoBuilder builder = albumDto.toBuilder()
+                                        .appleMusicId(meta.ids().appleMusic());
 
-                        if (meta.beschreibung() != null && !meta.beschreibung().isBlank()) {
-                            builder.description(meta.beschreibung());
+                                if (meta.beschreibung() != null && !meta.beschreibung().isBlank()) {
+                                    builder.description(meta.beschreibung());
+                                }
+
+                                return builder.build();
+                            });
+                })
+                .collectList()
+                .doOnNext(newAlbums -> {
+                    log.info("Loaded {} albums", newAlbums.size());
+
+                    // Detect new albums
+                    if (!previousAlbumIds.isEmpty()) {
+                        Set<String> currentAlbumIds = newAlbums.stream()
+                                .map(AlbumDto::_id)
+                                .collect(Collectors.toSet());
+
+                        List<AlbumDto> newlyAddedAlbums = newAlbums.stream()
+                                .filter(album -> !previousAlbumIds.contains(album._id()))
+                                .toList();
+
+                        if (!newlyAddedAlbums.isEmpty()) {
+                            log.info("Detected {} new album(s)", newlyAddedAlbums.size());
+                            notificationService.sendNewAlbumNotifications(newlyAddedAlbums);
                         }
 
-                        return builder.build();
-                    });
-            })
-            .collectList()
-            .doOnNext(newAlbums -> {
-                log.info("Loaded {} albums", newAlbums.size());
-                
-                // Detect new albums
-                if (!previousAlbumIds.isEmpty()) {
-                    Set<String> currentAlbumIds = newAlbums.stream()
-                        .map(AlbumDto::_id)
-                        .collect(Collectors.toSet());
-                    
-                    List<AlbumDto> newlyAddedAlbums = newAlbums.stream()
-                        .filter(album -> !previousAlbumIds.contains(album._id()))
-                        .toList();
-                    
-                    if (!newlyAddedAlbums.isEmpty()) {
-                        log.info("Detected {} new album(s)", newlyAddedAlbums.size());
-                        notificationService.sendNewAlbumNotifications(newlyAddedAlbums);
+                        previousAlbumIds = currentAlbumIds;
+                    } else {
+                        // First load, just store the IDs
+                        previousAlbumIds = newAlbums.stream()
+                                .map(AlbumDto::_id)
+                                .collect(Collectors.toSet());
+                        log.info("Initial album load complete, tracking {} album IDs", previousAlbumIds.size());
                     }
-                    
-                    previousAlbumIds = currentAlbumIds;
-                } else {
-                    // First load, just store the IDs — exclude 237 so the next fetch
-                    // detects it as new and sends a notification
-                    previousAlbumIds = newAlbums.stream()
-                        .filter(album -> !"237".equals(album.number()))
-                        .map(AlbumDto::_id)
-                        .collect(Collectors.toSet());
-                    log.info("Initial album load complete, tracking {} album IDs", previousAlbumIds.size());
-                }
-                
-                this.albums = newAlbums;
-            })
-            .subscribe();
+
+                    this.albums = newAlbums;
+                })
+                .subscribe();
     }
 }

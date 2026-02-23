@@ -55,10 +55,25 @@ public class NotificationService {
     private String buildNotificationBody(List<AlbumDto> newAlbums) {
         if (newAlbums.size() == 1) {
             AlbumDto album = newAlbums.getFirst();
-            return album.name() + " wurde veröffentlicht";
+            try {
+                return formatAlbumName(album.name()).strip() + " wurde veröffentlicht";
+            } catch (RuntimeException e) {
+                throw new RuntimeException("Album name format failed for album: " + newAlbums.getFirst(), e);
+            }
         } else {
             return "Neue Folgen veröffentlicht";
         }
+    }
+
+    private String formatAlbumName(String albumName) {
+        if (albumName == null) {
+            throw new RuntimeException("Album Name found with null value");
+        }
+        String firstUpperCase = albumName.substring(0, 1).toUpperCase() + albumName.substring(1);
+        if (firstUpperCase.toLowerCase().startsWith("die drei")) {
+            return firstUpperCase;
+        }
+        return "Die Drei Fragezeichen: " + firstUpperCase;
     }
 
     private Mono<Void> sendBatchNotification(List<PushToken> tokens, String title, String body, List<AlbumDto> albums) {
