@@ -5,6 +5,7 @@ import com.janne.dreialbenapiproxy.model.AlbumDto;
 import com.janne.dreialbenapiproxy.repository.PushTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -25,64 +26,80 @@ public class NotificationService {
     private final PushTokenRepository pushTokenRepository;
     private final WebClient.Builder webClientBuilder;
 
-    public void sendNewAlbumNotifications(List<AlbumDto> newAlbums) {
+    @Value("${app.webhook.url:}")
+    private String webhookUrl;
+
+    public void notifyWebhook(List<AlbumDto> newAlbums) {
         if (newAlbums.isEmpty()) {
             log.debug("No new albums to notify about");
             return;
         }
 
-        log.info("New albums detected: {}", newAlbums);
-        List<PushToken> enabledTokens = pushTokenRepository.findByEnabledTrue();
-        if (enabledTokens.isEmpty()) {
-            log.debug("No enabled push tokens found");
+        if (webhookUrl == null || webhookUrl.isBlank()) {
+            log.warn("Webhook URL not configured, skipping webhook notification for {} album(s)", newAlbums.size());
             return;
         }
 
-        String notificationBody = buildNotificationBody(newAlbums);
-        String notificationTitle = newAlbums.size() == 1
-                ? "Neue Folge Veröffentlicht!"
-                : newAlbums.size() + " Neue Folgen Veröffentlicht!";
+        log.info("Sending webhook notification for {} new album(s) to {}", newAlbums.size(), webhookUrl);
 
-        log.info("Sending notifications for {} new album(s) to {} devices", newAlbums.size(), enabledTokens.size());
+        Map<String, Object> payload = Map.of(
+            "albums", newAlbums,
+            "callbackUrl", "https://drei-alben.jannekeiper.de/api/v1/notifications"
+        );
+
+        WebClient webClient = webClientBuilder.build();
+
+        webClient.post()
+            .uri(webhookUrl)
+            .bodyValue(payload)
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response -> {
+                log.error("Webhook POST failed. Status: {}", response.statusCode());
+                return response.bodyToMono(String.class)
+                    .doOnNext(errorBody -> log.error("Webhook error body: {}", errorBody))
+                    .then(Mono.empty());
+            })
+            .bodyToMono(String.class)
+            .doOnNext(response -> log.info("Webhook response: {}", response))
+            .doOnError(error -> log.error("Error sending webhook notification", error))
+            .onErrorResume(error -> {
+                log.error("Failed to send webhook notification, continuing...", error);
+                return Mono.empty();
+            })
+            .subscribe();
+    }
+
+    public int sendNotificationToAllEnabled(String title, String body) {
+        List<PushToken> enabledTokens = pushTokenRepository.findByEnabledTrue();
+        if (enabledTokens.isEmpty()) {
+            log.debug("No enabled push tokens found");
+            return 0;
+        }
+
+        log.info("Sending notification to {} enabled devices", enabledTokens.size());
 
         Flux.fromIterable(enabledTokens)
-                .buffer(BATCH_SIZE)
-                .flatMap(tokenBatch -> sendBatchNotification(tokenBatch, notificationTitle, notificationBody, newAlbums))
-                .doOnError(error -> log.error("Error sending push notifications", error))
-                .subscribe();
+            .buffer(BATCH_SIZE)
+            .flatMap(tokenBatch -> sendBatchNotification(tokenBatch, title, body))
+            .doOnError(error -> log.error("Error sending push notifications", error))
+            .blockLast();
+
+        return enabledTokens.size();
     }
 
-    private String buildNotificationBody(List<AlbumDto> newAlbums) {
-        if (newAlbums.size() == 1) {
-            AlbumDto album = newAlbums.getFirst();
-            try {
-                return formatAlbumName(album.name()).strip() + " wurde veröffentlicht";
-            } catch (RuntimeException e) {
-                throw new RuntimeException("Album name format failed for album: " + newAlbums.getFirst(), e);
-            }
-        } else {
-            return "Neue Folgen veröffentlicht";
-        }
-    }
-
-    private String formatAlbumName(String albumName) {
-        if (albumName == null) {
-            throw new RuntimeException("Album Name found with null value");
-        }
-        String firstUpperCase = albumName.substring(0, 1).toUpperCase() + albumName.substring(1);
-        if (firstUpperCase.toLowerCase().startsWith("die drei")) {
-            return firstUpperCase;
-        }
-        return "Die Drei Fragezeichen: " + firstUpperCase;
-    }
-
-    private Mono<Void> sendBatchNotification(List<PushToken> tokens, String title, String body, List<AlbumDto> albums) {
+    private Mono<Void> sendBatchNotification(List<PushToken> tokens, String title, String body) {
         WebClient webClient = webClientBuilder
                 .baseUrl(EXPO_PUSH_URL)
                 .build();
 
         List<Map<String, Object>> messages = tokens.stream()
-                .map(token -> buildPushMessage(token.getToken(), title, body, albums))
+                .map(token -> Map.<String, Object>of(
+                    "to", token.getToken(),
+                    "sound", "default",
+                    "title", title,
+                    "body", body,
+                    "data", Map.of("type", "NEW_ALBUM")
+                ))
                 .toList();
 
         return webClient.post()
@@ -104,20 +121,6 @@ public class NotificationService {
                 });
     }
 
-    private Map<String, Object> buildPushMessage(String token, String title, String body, List<AlbumDto> albums) {
-        return Map.of(
-                "to", token,
-                "sound", "default",
-                "title", title,
-                "body", body,
-                "data", Map.of(
-                        "type", "NEW_ALBUM",
-                        "albumCount", albums.size(),
-                        "albumId", albums.getFirst()._id()
-                )
-        );
-    }
-
     public int sendTestNotification(String title, String body, boolean onlyEnabled) {
         List<PushToken> tokens = onlyEnabled
                 ? pushTokenRepository.findByEnabledTrue()
@@ -134,7 +137,7 @@ public class NotificationService {
                 .buffer(BATCH_SIZE)
                 .flatMap(tokenBatch -> sendTestBatchNotification(tokenBatch, title, body))
                 .doOnError(error -> log.error("Error sending test notifications", error))
-                .blockLast(); // Block to ensure completion for admin endpoint
+                .blockLast();
 
         return tokens.size();
     }

@@ -68,7 +68,7 @@ public class AlbumService {
 
                         if (!newlyAddedAlbums.isEmpty()) {
                             log.info("Detected {} new album(s)", newlyAddedAlbums.size());
-                            notificationService.sendNewAlbumNotifications(newlyAddedAlbums);
+                            notificationService.notifyWebhook(newlyAddedAlbums);
                         }
 
                         previousAlbumIds = currentAlbumIds;

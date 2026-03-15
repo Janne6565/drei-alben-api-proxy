@@ -27,3 +27,6 @@ app:
     secret: ${DDFDB_API_KEY:secret}
   admin:
     token: ${ADMIN_TOKEN:change-me-in-production}
+  webhook:
+    url: ${WEBHOOK_URL:}
+    secret: ${WEBHOOK_SECRET:change-me-in-production}
